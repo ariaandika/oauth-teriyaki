@@ -8,6 +8,7 @@ export namespace GithubOAuth {
 
     export let AUTH_CALLBACK_URL = ''
     export let HOME_URL = ''
+    export let LOGGING = false
 
     export const exampleScope: Scope[] = ["user","public_repo"]
 
@@ -23,13 +24,17 @@ export namespace GithubOAuth {
 
     const API_ACCEPT_HEADERS = {
         "Accept": "application/vnd.github.v3+json, application/json",
-        "User-Agent": "https://example-app.com/",
+        "User-Agent": "",
     }
 
+    export function logging(val: boolean) {
+        LOGGING = val
+    }
 
     export function setup(opt: { AUTH_CALLBACK_URL?: string, HOME_URL?: string }) {
         AUTH_CALLBACK_URL = opt.AUTH_CALLBACK_URL ?? AUTH_CALLBACK_URL
-        HOME_URL = opt.HOME_URL ?? HOME_URL 
+        HOME_URL = opt.HOME_URL ?? HOME_URL
+        API_ACCEPT_HEADERS["User-Agent"] = opt.HOME_URL ?? HOME_URL
     }
 
     /** used when we want to login or register */
@@ -50,7 +55,7 @@ export namespace GithubOAuth {
     * used when github redirected back to our app
     * we exchange the "code" to access_token
     * */
-    export async function confirmToken(url: Request | URL | string, session_state: string | null | undefined) {
+    export function confirmToken(url: Request | URL | string, session_state: string | null | undefined) {
         const u = (url instanceof Request) ? new URL(url.url) : typeof url == 'string' ? new URL(url) : url
 
         if (u.searchParams.has('error')) {
@@ -71,7 +76,7 @@ export namespace GithubOAuth {
             throw new GithubOAuthInvalidState()
         }
 
-        return await requestToken(code)
+        return requestToken(code)
     }
 
     export async function requestToken(code: string, access_token?: string) {
@@ -87,8 +92,11 @@ export namespace GithubOAuth {
         url.searchParams.set("code",code)
 
         const response = await fetch(new Request(url),{ headers })
+        const data = await response.json() as ExampleResponseToken
 
-        return await response.json() as ExampleResponseToken
+        LOGGING && console.log(`[GITHUB OAUTH TOKEN] ${url.toString()} ${JSON.stringify(data)}`);
+
+        return data
     }
 
     export function generateState() {
@@ -104,21 +112,12 @@ export namespace GithubOAuth {
 
         access_token && headers.set("Authorization",`Bearer ${access_token}`);
 
-        const response = await fetch(new Request(url),{ headers })
+        const response = await fetch(url.toString(),{ headers })
         const data = await response.json() as T
-        console.log({data,access_token})
+
+        LOGGING && console.log(`[GITHUB OAUTH API] ${url.toString()} ${JSON.stringify(data)}`);
+
         return data
-    }
-
-    export async function exampleApiRequest(access_token: string) {
-        const url = new URL(API_URL_BASE + '/user/repos?sort=created&direction=desc')
-        const headers = new Headers(API_ACCEPT_HEADERS)
-
-        access_token && headers.set("Authorization",`Bearer ${access_token}`);
-
-        const response = await fetch(new Request(url),{ headers })
-
-        return await response.json() as { name: string, html_url: string }
     }
 }
 
