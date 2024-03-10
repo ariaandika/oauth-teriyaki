@@ -1,5 +1,5 @@
 {
-  "name": "oauth-implementation",
+  "name": "oauth-teriyaki",
   "module": "index.ts",
   "type": "module",
   "devDependencies": {
