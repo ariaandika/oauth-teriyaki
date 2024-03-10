@@ -3,9 +3,7 @@ import { GithubOAuth } from "./github";
 
 
 class GithubClient {
-    constructor(
-        public cookie: Record<string,Cookie>,
-    ) {}
+    constructor(public cookie: Record<string,Cookie>) {}
 
     get isSession() {
         return Boolean(this.cookie.access_token.value)
@@ -21,16 +19,16 @@ class GithubClient {
 
 export default new Elysia()
 .derive(({ cookie }) => ({ auth: new GithubClient(cookie) }))
-.get('/auth/o/github/login', ({ set, cookie: { state } }) => {
-    // logout first if loggedin
-    // this.cookie.access_token.remove()
 
-    const { githubUrl, state: newState } = GithubOAuth.createAuthorizationURL(GithubOAuth.exampleScope)
+.get('/auth/o/github/login', ({ set, cookie }) => {
+    const { githubUrl, state } = GithubOAuth.createAuthorizationURL(GithubOAuth.exampleScope)
 
     set.status = 302
-    set.headers['Location'] = githubUrl.toString() // + `&redirect_uri=${GithubOAuth.AUTH_CALLBACK_URL}`
-    state.value = newState
+    set.headers['Location'] = githubUrl.toString()
+
+    cookie.state.value = state
 })
+
 .get('/auth/logout', ({ cookie, set }) => {
     // NOTE: the path should explicitly defined
     // otherwise if logout url is /auth/logout, remove cookie not work
@@ -38,15 +36,12 @@ export default new Elysia()
     set.status = 302
     set.headers.location = "/"
 })
-.get('/auth/o/github/confirm', async ({ request, cookie: { state, access_token }, set }) => {
-    const token = await GithubOAuth.confirmToken(request,state.value)
 
-    // error
-    // { error: string, error_description: string, error_uri: string }
+.get('/auth/o/github/confirm', async ({ request, cookie, set }) => {
+    const token = await GithubOAuth.confirmToken(request, cookie.state.value)
 
-    console.log({ token })
-
-    access_token.set({
+    // NOTE: the path should explicitly defined
+    cookie.access_token.set({
         value: token.access_token,
         path: '/',
         httpOnly: true,

@@ -59,21 +59,22 @@ export namespace GithubOAuth {
         const u = (url instanceof Request) ? new URL(url.url) : typeof url == 'string' ? new URL(url) : url
 
         if (u.searchParams.has('error')) {
-            throw {
-                error: u.searchParams.get("error"),
-                error_description: u.searchParams.get("error_description"),
-                error_uri: u.searchParams.get("error_uri"),
-            }
+            LOGGING && console.log(`[GITHUB OAUTH ERROR] ${url.toString()} ${JSON.stringify(Object.fromEntries(u.searchParams))}`);
+            throw new GithubOAuthError({
+                error: u.searchParams.get("error") as string,
+                error_description: u.searchParams.get("error_description") as string,
+                error_uri: u.searchParams.get("error_uri") as string,
+            })
         }
 
         const state = u.searchParams.get("state")
         const code = u.searchParams.get("code")
 
         if (state && session_state && state == session_state) {} else {
-            throw new GithubOAuthInvalidState()
+            throw new Error(`OAuth error, no state present`)
         }
         if (!code) {
-            throw new GithubOAuthInvalidState()
+            throw new Error(`OAuth error, no code present`)
         }
 
         return requestToken(code)
@@ -92,11 +93,16 @@ export namespace GithubOAuth {
         url.searchParams.set("code",code)
 
         const response = await fetch(new Request(url),{ headers })
-        const data = await response.json() as ExampleResponseToken
+        const data = await response.json() as Record<string,any>
+
+        if (data.error) {
+            LOGGING && console.log(`[GITHUB OAUTH ERROR] ${url.toString()} ${JSON.stringify(data)}`);
+            throw new GithubOAuthError(data as any,response.status)
+        }
 
         LOGGING && console.log(`[GITHUB OAUTH TOKEN] ${url.toString()} ${JSON.stringify(data)}`);
 
-        return data
+        return data as ExampleResponseToken
     }
 
     export function generateState() {
@@ -121,10 +127,22 @@ export namespace GithubOAuth {
     }
 }
 
-export class GithubOAuthInvalidState extends Error {
-    name = "Invalid State" as const
-    status = 403
-    message = "Invalid oauth state"
+export class GithubOAuthError extends Error {
+    name = "Github OAuth Error" as const
+    constructor(
+        public error: {
+            error: string,
+            error_description: string,
+            error_uri: string
+        },
+        public status = 400
+    ) {
+        super(error.error)
+    }
+
+    toResponse() {
+        return Response.json({ name: this.name, ...this.error },{ status: this.status })
+    }
 }
 
 function env() {

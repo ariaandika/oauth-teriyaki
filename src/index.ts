@@ -5,8 +5,8 @@ import Page from "./pages/Page"
 
 
 
-export default new Elysia()
+new Elysia()
     .use(tailwind)
     .use(html())
     .use(Page)
-
+.listen(3000)
