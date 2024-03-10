@@ -11,11 +11,14 @@ const src = `\
 }
 `
 
-export const tailwind = await (async() => {
+let res = new Promise(async (resolve) => {
     const { css } = await postcss(tw({ content: ["./src/**/*.{ts,tsx}"] })).process(src, { from: "bleb.css", });
-    return new Elysia()
-    .get('/app.css', ({ set }) => {
-        set.headers["content-type"] = "text/css"
-        return css
-    })
-})()
+    res = css
+    resolve(css)
+}) as any
+
+export const tailwind = new Elysia()
+.get('/app.css', async ({ set }) => {
+    set.headers["content-type"] = "text/css"
+    return res
+})
