@@ -1,12 +1,19 @@
 export namespace GoogleOAuth {
-    export const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = env();
+    // SOURCE: https://accounts.google.com/.well-known/openid-configuration
+
     export const AUTHORIZE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
-    export const TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
-    export const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
+    // export const TOKEN_URL = 'https://www.googleapis.com/oauth2/v4/token'
+    export const TOKEN_URL = 'https://oauth2.googleapis.com/token'
+    // export const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
+    export const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo'
+
+    export const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = env();
 
     export let AUTH_CALLBACK_URL = ''
     export let HOME_URL = ''
     export let LOGGING = false
+
+    export const exampleScope: Scope[] = ["openid","email"]
 
     export type Scope =
         'openid'
@@ -16,6 +23,8 @@ export namespace GoogleOAuth {
         "access_token": "ya29.Glins-oLtuljNVfthQU2bpJVJPTu",
         "token_type": "Bearer",
         "expires_in": 3600,
+        "scope": string,
+        "refresh_token"?: string,
         "id_token": `eyJhbGciOiJSUzI1NiIsImtpZCI6ImFmZmM2MjkwN2E0qppnBpMjFL2YMDV
                     .eg3jl1y5DeSKNPh6cZ8H2p4Xb2UIrJguGbQHVIJvtm_AspRjrmaTUQKrzXD
                     .RCfDROSUU-h7XKIWRrEd2-W9UkV5oCg`
@@ -34,12 +43,13 @@ export namespace GoogleOAuth {
         "iat": 1524598069
     }
 
+    // NOTE: depend on the scope
     export type ExampleUserInfo = {
         "sub": "110248495921238986420",
         "name": "Aaron Parecki",
-        "given_name": "Aaron",
-        "family_name": "Parecki",
-        "picture": `https://lh4.googleusercontent.com/-kw-iMgD
+        "given_name"?: "Aaron",
+        "family_name"?: "Parecki",
+        "picture"?: `https://lh4.googleusercontent.com/-kw-iMgD
             _j34/AAAAAAAAAAI/AAAAAAAAAAc/P1YY91tzesU/photo.jpg`,
         "email": "aaron.parecki@okta.com",
         "email_verified": true,
@@ -101,34 +111,34 @@ export namespace GoogleOAuth {
     }
 
     export async function requestToken(code: string, access_token?: string) {
-        const url = new URL(TOKEN_URL)
+        LOGGING && console.log(`[GOOGLE OAUTH CONFIRM] ${code}`)
+        // const url = new URL(TOKEN_URL)
+        const form = new FormData()
         // const headers = new Headers(API_ACCEPT_HEADERS)
 
         // access_token && headers.set("Authorization",`Bearer ${access_token}`);
 
-        url.searchParams.set("grant_type","authorization_code")
-        url.searchParams.set("client_id",GOOGLE_CLIENT_ID)
-        url.searchParams.set("client_secret",GOOGLE_CLIENT_SECRET)
-        url.searchParams.set("redirect_uri",AUTH_CALLBACK_URL)
-        url.searchParams.set("code",code)
+        form.set("grant_type","authorization_code")
+        form.set("client_id",GOOGLE_CLIENT_ID)
+        form.set("client_secret",GOOGLE_CLIENT_SECRET)
+        form.set("redirect_uri",AUTH_CALLBACK_URL)
+        form.set("code",code)
 
-        const response = await fetch(new Request(url),/*{ headers }*/)
-        const data = await response.json() as Record<string,any>
+        const response = await fetch(TOKEN_URL,{
+            method: "POST",
+            body: form
+        })
 
-        if (data.error) {
-            LOGGING && console.log(`[GOOGLE OAUTH ERROR] ${url.toString()} ${JSON.stringify(data)}`);
-            throw new GoogleOAuthError(data as any,response.status)
-        }
+        const data: ExampleResponseToken = await response.json() as any
 
-        LOGGING && console.log(`[GOOGLE OAUTH TOKEN] ${url.toString()} ${JSON.stringify(data)}`);
+        // if (data.error) {
+        //     LOGGING && console.log(`[GOOGLE OAUTH ERROR] ${url.toString()} ${JSON.stringify(data)}`);
+        //     throw new GoogleOAuthError(data as any,response.status)
+        // }
 
-        const { id_token } = data as ExampleResponseToken
+        LOGGING && console.log(`[GOOGLE OAUTH TOKEN]`,response,data);
 
-        const [,body] = id_token.split(".")
-
-        const user: ExampleJWTClaim = JSON.parse(atob(body))
-
-        return { data: data as ExampleResponseToken, user }
+        return { data, user: {} }
     }
 
     export function generateState() {

@@ -5,10 +5,21 @@ import oauth from "../oauth";
 
 export default new Elysia()
 .use(oauth)
-.get("/", async ({ auth }) => Base(
+.get("/", async ({ auth, googleClient }) => Base(
     <section class="h-full bg-gray-50 grid place-items-center">
         <div class="p-8 w-[560px] h-[800px] shadow-lg rounded-md bg-white space-y-8">
-        {auth.isSession ? <>
+        {googleClient.isSession ? await (async () => {
+            const res = await googleClient.userInfo()
+            return <>
+                <h1 class="text-4xl font-bold">Google Info</h1>
+                <a href="/auth/logout">Logout</a>
+                <h2 class="text-xl font-semibold">Info</h2>
+                <div>Name: {res.name}</div>
+                <div>Email: {res.email}</div>
+                <div>Given name: {res.given_name}</div>
+                <div>Hd: {res.hd}</div>
+            </>
+        })() : auth.isSession ? <>
             <h1 class="text-4xl font-bold">Welcome</h1>
             <a href="/auth/logout">Logout</a>
             <h2 class="text-xl font-semibold">Repositories</h2>
@@ -20,15 +31,13 @@ export default new Elysia()
         </> : <>
             <h1 class="text-4xl font-bold">Lets log you in</h1>
             <div class="">
-                <a href="/">{Google}</a>
+                <a href="/auth/o/google/login">{Google}</a>
                 <a href="/auth/o/github/login">{Github}</a>
             </div>
         </>}
         </div>
     </section>
 ))
-
-
 
 
 function Base(page: JSX.Element) {
