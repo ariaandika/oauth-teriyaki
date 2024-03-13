@@ -17,7 +17,7 @@ export namespace OAuth {
                 ? new URL(val) : val
         }
 
-        abstract requestToken(_code: string, _access_token?: string): Promise<any>
+        abstract requestToken(code: string, access_token?: string): Promise<any>
 
         createAuthorizationURL(scope: T['scope'][]) {
             const state = Client.generateState()
@@ -56,6 +56,18 @@ export namespace OAuth {
         AUTHORIZE_URL: string
         CLIENT_ID: string
         AUTH_CALLBACK_URL: string
+    }
+
+    export class Context {
+        constructor(
+            public access_token: string,
+            public token_type: string,
+            public scope: string,
+        ) {}
+
+        toString() {
+            return JSON.stringify({access_token:this.access_token,token_type:this.token_type,scope:this.scope})
+        }
     }
 
     export class OAuthError extends Error {
@@ -127,15 +139,14 @@ export namespace GithubOAuth {
             url.searchParams.set("grant_type","authorization_code")
             url.searchParams.set("client_id",this.user.CLIENT_ID)
             url.searchParams.set("client_secret",this.user.CLIENT_SECRET)
-            url.searchParams.set("redirect_uri",this.provider.AUTHORIZE_URL)
+            url.searchParams.set("redirect_uri",this.user.AUTH_CALLBACK_URL)
             url.searchParams.set("code",code)
 
             const response = await fetch(url.toString(),{ headers })
             const data = await response.json() as Record<string,any>
 
-            if (data.error) {
-                throw new OAuth.OAuthError(data)
-            }
+            if (data.error)
+                throw new OAuth.OAuthError(data);
 
             return data as ExampleResponseToken
         }
@@ -151,6 +162,14 @@ export namespace GithubOAuth {
 
             return data
         }
+
+        createSession(access_token: string) {
+            return new Session(this, access_token)
+        }
+    }
+
+    export class Context extends OAuth.Context {
+        provider = 'github' as const
     }
 
     export class Session {
@@ -162,7 +181,7 @@ export namespace GithubOAuth {
         ) {}
 
         repositories() {
-            return this.client.apiRequest<{name:string, html_url:string}>(
+            return this.client.apiRequest<{name:string, html_url:string}[]>(
                 '/user/repos?sort=created',this.access_token
             )
         }
@@ -228,10 +247,21 @@ export namespace GoogleOAuth {
         }
     }
 
+    export class Context extends OAuth.Context {
+        provider = 'google' as const
+        constructor(
+            public id_token: string,
+            ...acc: ConstructorParameters<typeof OAuth.Context>
+        ) {
+            super(...acc)
+        }
+    }
+
     // NOTE: depend on the scope
     export type ExampleUserInfo = {
         "sub": string
         "name": string
+        "email": string
         "given_name"?: string,
         "family_name"?: string,
         "picture"?: string,
@@ -248,10 +278,10 @@ export namespace GoogleOAuth {
             public access_token: string
         ) {}
 
-        async exampleUserInfo(access_token: string) {
+        async exampleUserInfo() {
             const res = await fetch(Session.USERINFO_URL,{
                 headers: {
-                    Authorization: `Bearer ${access_token}`
+                    Authorization: `Bearer ${this.access_token}`
                 }
             })
 

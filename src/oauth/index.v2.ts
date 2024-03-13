@@ -1,17 +1,31 @@
 import { Elysia, t } from "elysia"
-import { OAuth, GithubOAuth, GoogleOAuth } from "./oauth"
+import { GithubOAuth, GoogleOAuth } from "./oauth"
 
-const AUTH_CALLBACK_URL = ""
-const CLIENT_ID = ""
-const CLIENT_SECRET = ""
-const USER_AGENT = ""
+const USER_AGENT = "http://localhost:3000"
 
-const githubClient = new GithubOAuth.Client({ AUTH_CALLBACK_URL, CLIENT_SECRET, CLIENT_ID, USER_AGENT })
-const googleClient = new GoogleOAuth.Client({ CLIENT_ID, CLIENT_SECRET, AUTH_CALLBACK_URL })
+const githubClient = new GithubOAuth.Client({
+    AUTH_CALLBACK_URL: "http://localhost:3000/auth/o/github/confirm",
+    CLIENT_ID: process.env.GITHUB_CLIENT_ID!,
+    CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET!,
+    USER_AGENT,
+})
 
+const googleClient = new GoogleOAuth.Client({
+    AUTH_CALLBACK_URL: "http://localhost:3000/auth/o/google/confirm",
+    CLIENT_ID: process.env.GOOGLE_CLIENT_ID!,
+    CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET!,
+})
+
+export type Context = GoogleOAuth.Context | GithubOAuth.Context
 
 export const app = new Elysia()
-
+.decorate({ googleClient, githubClient })
+.get('/auth/logout',({ cookie, set }) => {
+    cookie.id_token.remove({ path: "/" })
+    cookie.context.remove({ path: "/" })
+    set.status = 'Found'
+    set.headers.location = '/'
+})
 .get('/auth/o/github/login', ({ set, cookie }) => {
     const { url, state } = githubClient.createAuthorizationURL(GithubOAuth.exampleScope)
 
@@ -20,29 +34,27 @@ export const app = new Elysia()
         path: "/",
         httpOnly: true,
     })
-
-    set.status = 302
+    set.status = 'Found'
     set.headers.location = url.toString()
 })
 
 
 .get('/auth/o/github/confirm', async ({ set, request, cookie }) => {
-    const state = cookie.state.value
-    const code = githubClient.confirmToken(request,state)
+    const code = githubClient.confirmToken(request,cookie.state.value)
 
-    const { access_token } = await githubClient.requestToken(code)
+    const context = await githubClient.requestToken(code)
+    // const context: Context = new GithubOAuth.Context(access_token,token_type,scope)
 
-    cookie.access_token.set({
-        value: access_token,
+    cookie.state.remove({ path: "/" })
+    cookie.context.set({
+        value: {...context,provider:'github'},
         path: "/",
         httpOnly: true
     })
-
-    set.status = 302
+    set.status = 'Found'
     set.headers.location = '/'
-},{
-    cookie: t.Object({ state: t.String() })
-})
+
+},{ cookie: t.Object({ state: t.String() }) })
 
 
 .get('/auth/o/google/login', ({ set, cookie }) => {
@@ -53,31 +65,29 @@ export const app = new Elysia()
         path: "/",
         httpOnly: true,
     })
-
-    set.status = 302
+    set.status = 'Found'
     set.headers.location = url.toString()
 })
 
 
 .get('/auth/o/google/confirm', async ({ set, request, cookie }) => {
-    const state = cookie.state.value
-    const code = googleClient.confirmToken(request,state)
+    const code = googleClient.confirmToken(request,cookie.state.value)
 
-    const { data: { access_token, id_token } } = await googleClient.requestToken(code)
+    const {data: { id_token, expires_in,refresh_token, ...context }} = await googleClient.requestToken(code)
+    // const { toString, id_token:_, ...f } = new GoogleOAuth.Context(id_token,access_token,token_type,scope)
 
-    cookie.access_token.set({
-        value: access_token,
+    cookie.state.remove({ path: "/" })
+    cookie.context.set({
+        value: {...context,provider:'google'},
         path: "/",
         httpOnly: true
     })
-
     cookie.id_token.set({
         value: id_token,
         path: "/",
         httpOnly: true
     })
-
-    set.status = 302
+    set.status = 'Found'
     set.headers.location = '/'
 },{
     cookie: t.Object({ state: t.String() })
