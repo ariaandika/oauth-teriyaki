@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia"
-import { GithubOAuth, GoogleOAuth } from "./oauth"
+import { GithubOAuth, GoogleOAuth, ZohoOAuth } from "./oauth"
 
 const USER_AGENT = "http://localhost:3000"
 
@@ -16,10 +16,17 @@ const googleClient = new GoogleOAuth.Client({
     CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET!,
 })
 
+const zohoClient = new ZohoOAuth.Client({
+    AUTH_CALLBACK_URL: "http://localhost:3000/auth/v1/o/zoho",
+    CLIENT_ID: process.env.ZOHO_CLIENT_ID!,
+    CLIENT_SECRET: process.env.ZOHO_CLIENT_SECRET!,
+    scope: ZohoOAuth.exampleScope
+})
+
 export type Context = GoogleOAuth.Context | GithubOAuth.Context
 
 export const app = new Elysia()
-.decorate({ googleClient, githubClient })
+.decorate({ googleClient, githubClient, zohoClient })
 .get('/auth/logout',({ cookie, set }) => {
     cookie.id_token.remove({ path: "/" })
     cookie.context.remove({ path: "/" })
@@ -89,6 +96,38 @@ export const app = new Elysia()
     })
     set.status = 'Found'
     set.headers.location = '/'
+},{
+    cookie: t.Object({ state: t.String() })
+})
+
+
+
+.get('/auth/o/zoho/login', ({ set, cookie }) => {
+    const { url, state } = zohoClient.createAuthorizationURL(ZohoOAuth.exampleScope)
+
+    cookie.state.set({
+        value: state,
+        path: "/",
+        httpOnly: true,
+    })
+
+    set.redirect = url.toString()
+})
+
+
+.get('/auth/v1/o/zoho', async ({ set, request, cookie }) => {
+    const code = zohoClient.confirmToken(request,cookie.state.value)
+
+    const {data: { expires_in,...context }} = await zohoClient.requestToken(code)
+
+    cookie.state.remove({ path: "/" })
+    cookie.context.set({
+        value: {...context,provider:'zoho'},
+        path: "/",
+        httpOnly: true
+    })
+
+    set.redirect = "/"
 },{
     cookie: t.Object({ state: t.String() })
 })

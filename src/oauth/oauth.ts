@@ -295,3 +295,180 @@ export namespace GoogleOAuth {
         }
     }
 }
+
+export namespace ZohoOAuth {
+    export type ExampleResponseToken = {
+        "access_token": string
+        "token_type": "Bearer"
+        "api_domain": "https://www.zohoapis.com"
+        "expires_in": number
+        "scope": string
+    }
+
+    // https://www.zoho.com/mail/help/api/
+    export const exampleScope = ["ZohoMail.accounts.READ","ZohoMail.messages.CREATE"]
+
+    export class Client extends OAuth.Client {
+        static AUTHORIZE_URL = 'https://accounts.zoho.com/oauth/v2/auth';
+        static TOKEN_URL = 'https://accounts.zoho.com/oauth/v2/token'
+
+        constructor(private user: {
+            AUTH_CALLBACK_URL: string
+            CLIENT_ID: string
+            CLIENT_SECRET: string,
+            scope: string[]
+        }) {
+            super({
+                AUTHORIZE_URL: Client.AUTHORIZE_URL,
+                AUTH_CALLBACK_URL: user.AUTH_CALLBACK_URL,
+                CLIENT_ID: user.CLIENT_ID
+            })
+        }
+
+        async requestToken(code: string, _access_token?: string | undefined) {
+            // Zoho uses query parameter with post method in their documentation
+            const url = new URL(Client.TOKEN_URL)
+
+            url.searchParams.set("grant_type","authorization_code")
+            url.searchParams.set("client_id",this.user.CLIENT_ID)
+            url.searchParams.set("client_secret",this.user.CLIENT_SECRET)
+            url.searchParams.set("redirect_uri",this.user.AUTH_CALLBACK_URL)
+            url.searchParams.set("code",code)
+
+            // NOTE: currently using global scope
+            url.searchParams.set("scope",this.user.scope.join(','))
+
+            const response = await fetch(url.toString(),{
+                method: "POST"
+            })
+
+            const data = await response.json() as Record<string,any>
+
+            if (data.error) {
+                throw new OAuth.OAuthError(data)
+            }
+
+            return { data: data as ExampleResponseToken }
+        }
+
+        createSession(access_token: string) {
+            return new Session(this, access_token)
+        }
+    }
+
+    // export class Context extends OAuth.Context {
+    //     provider = 'zoho' as const
+    //     constructor(
+    //         ...acc: ConstructorParameters<typeof OAuth.Context>
+    //     ) {
+    //         super(...acc)
+    //     }
+    // }
+
+    export class Session {
+        constructor(
+            public client: Client,
+            public access_token: string
+        ) {}
+
+        static ACCOUNT_INFO_URL = "https://mail.zoho.com/api/accounts"
+        static ACCOUNT_ID_URL = "https://mail.zoho.com/api/accounts/4385382000000008002"
+
+        async accountInfo() {
+            const res = await fetch('https://mail.zoho.com/api/accounts',{
+                headers: { Authorization: `Zoho-oauthtoken ${this.access_token}` }
+            })
+
+            const data = await res.json() as {
+                status:{
+                    code: number        // 200,
+                    description: string // "success"
+                }
+                data: {
+                    "accountId":"4385382000000008002"
+                    "firstName":"Banter Logistic"
+                    "lastName":"",
+                    "URI":"https://mail.zoho.com/api/accounts/4385382000000008002",
+                    "primaryEmailAddress":"office@banter.id",
+                    "country":"id"
+                    "lastLogin":1710341163594
+                    "incomingUserName":"office@banter.id"
+                    "accountDisplayName":"office",
+                    "displayName":"Banter Logistic",
+                    "role":"super_admin",
+                    "emailAddress":[
+                        {
+                            "isAlias":false
+                            "isPrimary":true
+                            "mailId":"office@banter.id"
+                            "isConfirmed":true
+                        },
+                        {
+                            "isAlias":false
+                            "isPrimary":false
+                            "mailId":"banterlogistic.id@gmail.com"
+                            "isConfirmed":true
+                        },
+                    ],
+                    "sendMailDetails":[
+                        {
+                            "sendMailId":"4385382000000008004",
+                            "displayName":"Banter Logistic",
+                            "serverName":"smtpout.mail.zoho.com",
+                            "signatureId":"4385382000000010003",
+                            "serverPort":25,
+                            "userName":"office@banter.id",
+                            "connectionType":"plain",
+                            "mode":"mailbox",
+                            "validated":false,
+                            "fromAddress":"office@banter.id",
+                            "smtpConnection":0,
+                            "validationRequired":true,
+                            "validationState":0,
+                            "status":true
+                        }
+                    ],
+                    // and a lot more data
+                }[]
+            }
+
+            return data.data
+        }
+
+        async sendEmail(input: {
+            fromAddress: string
+            toAddress: string
+            subject: string
+            content: string,
+            ccAddress?: string
+            bccAddress?: string
+            askReceipt?: string
+        }) {
+            const res = await fetch(Session.ACCOUNT_ID_URL+"/messages",{
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    Authorization: `Zoho-oauthtoken ${this.access_token}`
+                },
+                body: JSON.stringify(input),
+            })
+
+            const data = await res.json() as {
+                "status":{
+                    "code": number          // 200
+                    "description": string   // "success"
+                },
+                "data":{
+                    "subject": string
+                    "messageId": string
+                    "fromAddress": string
+                    "mailId": string
+                    "toAddress": string
+                    "content": string
+                }
+            }
+
+            return data.data
+        }
+    }
+}
